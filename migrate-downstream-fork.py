@@ -145,6 +145,22 @@ class Migrator:
       else:
         self.source_kind = "merge-split"
 
+  def do_sanity_checks(self):
+    """Exercise the assumptions we make on the old and new repos."""
+    for rev in self.oldrev_set:
+      if rev in self.base_svn_mapping:
+        # Check 1: Old revisions map to a single svn revision
+        # Also ensures that old revisions only have one possible subproject.
+        if len(self.base_svn_mapping[rev]) > 1:
+          raise Exception("Old commit %s maps to more than one svn revision" % rev)
+    for _, newrev in self.svn_to_newrev.iteritems():
+      if newrev in self.base_svn_mapping:
+        # Check 2: Monorepo revisions have no subproject information
+        # I believe this is because they now state 'llvm-svn' instead of
+        # the original tag. See llvm_filter.py.
+        if any(subproject is not None for svnrev, subproject in self.base_svn_mapping[newrev]):
+            raise Exception("New commit %s has subprojects" % newrev)
+
   def commit_filter(self, fm, githash, commit, oldparents):
     """Do the real filtering work..."""
     # If the commit is a new upstream commit, leave it alone
@@ -249,6 +265,8 @@ class Migrator:
     self.detect_new_svn_revisions()
     print "Detecting old svn revisions..."
     self.detect_old_svn_revisions()
+    print "Doing sanity checks on gathered information..."
+    self.do_sanity_checks()
     print "Done."
     print "Using conversion mode: %s (%s)." % (
         self.source_kind,
